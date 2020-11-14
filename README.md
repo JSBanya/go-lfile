@@ -1,6 +1,8 @@
 # go-lfile
 A cross-platform Go package that provides a wrapper for os.File implementing mutex-like exclusive locking.
 
+Transparently makes use of underlying system calls (flock/fcntl on Unix, LockFileEx on Windows) to provide exclusive locks on files, allowing file operations to synchronize within a process and between different processes.
+
 ```
 go get github.com/JSBanya/go-lfile
 ```
