@@ -82,7 +82,7 @@ func TestUnlockOnFileLockedByOther(t *testing.T) {
 	lf := New(f)
 	lf2 := New(f2)
 
-	if err = lf.Lock(); err != nil {
+	if err = lf.RWLock(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -128,7 +128,7 @@ func TestClose(t *testing.T) {
 	}
 
 	lf := New(f)
-	if err = lf.Lock(); err != nil {
+	if err = lf.RWLock(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -166,11 +166,11 @@ func TestNonblockingErrors(t *testing.T) {
 	lf2 := New(f2)
 	lf2.DisableBlocking()
 
-	if err = lf.Lock(); err != nil {
+	if err = lf.RWLock(); err != nil {
 		t.Fatal(err)
 	}
 
-	err = lf2.Lock();
+	err = lf2.RWLock();
 	if err == nil {
 		t.Fatal("Expected LOCK_CONFLICT error")
 	} else if err != LOCK_CONFLICT {
@@ -181,7 +181,7 @@ func TestNonblockingErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err = lf2.Lock(); err != nil {
+	if err = lf2.RWLock(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -208,7 +208,7 @@ func TestBlockingLockAndUnlock(t *testing.T) {
 	fmux := New(f)
 	fmux.UseFLOCK() // No-op on windows
 
-	err = fmux.Lock()
+	err = fmux.RWLock()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,7 +223,7 @@ func TestBlockingLockAndUnlock(t *testing.T) {
 		fmux2 := New(f2)
 		fmux2.UseFLOCK()
 
-		err = fmux2.Lock()
+		err = fmux2.RWLock()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -262,5 +262,95 @@ func TestBlockingLockAndUnlock(t *testing.T) {
 
 	if string(content) != "thread1 thread2" {
 		t.Fatalf("expected \"thread1 thread2\", got %s", string(content))
+	}
+}
+
+func TestMultipleReadLocks(t *testing.T) {
+	log.Println("TestMultipleReadLocks running.")
+	tempFileName, err := createTemp()
+	if err != nil {
+		t.Fatal(err)
+	}	
+
+	for i := 0; i < 4; i++ {
+		f, err := os.OpenFile(tempFileName, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
+		if err != nil {
+			t.Fatal(err)
+		}
+	
+		lf := New(f)
+		if err = lf.RLock(); err != nil {
+			t.Fatal(err)
+		}
+		defer lf.UnlockAndClose()
+	}
+}
+
+func TestExclusive(t *testing.T) {
+	log.Println("TestExclusive running.")
+	tempFileName, err := createTemp()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Read lock #1
+	f, err := os.OpenFile(tempFileName, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lf := New(f)
+	if err = lf.RLock(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Read lock #2
+	f2, err := os.OpenFile(tempFileName, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lf2 := New(f2)
+	if err = lf2.RLock(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Exclusive lock
+	f3, err := os.OpenFile(tempFileName, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lfex := New(f3)
+	lfex.DisableBlocking()
+
+	// Try exclusive lock (should fail)
+	err = lfex.RWLock()
+	if err == nil {
+		t.Fatal("Expected failure on exclusive lock")
+	} else if err != LOCK_CONFLICT {
+		t.Fatal(err)
+	}
+
+	if err = lf.UnlockAndClose(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Try exclusive lock (still should fail, another hold read lock)
+	err = lfex.RWLock()
+	if err == nil {
+		t.Fatal("Expected failure on exclusive lock")
+	} else if err != LOCK_CONFLICT {
+		t.Fatal(err)
+	}
+
+	if err = lf2.UnlockAndClose(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Try exclusive lock (should succeed, all locks released)
+	if err = lfex.RWLock(); err != nil {
+		t.Fatal(err)
+	}
+	
+	if err = lfex.UnlockAndClose(); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -23,26 +23,31 @@ func (lf *LockableFile) UseFLOCK() {
 	lf.unixLockType = FLOCK
 }
 
-func (lf *LockableFile) Lock() error {
+func (lf *LockableFile) lock(exclusive bool) error {
 	fd := lf.Fd()
 
 	var err error
 	switch lf.unixLockType {
 	case FCNTL:
 		{
-			l_type := syscall.F_SETLK
+			cmd := syscall.F_SETLK
 			if lf.blocking {
-				l_type = syscall.F_SETLKW
+				cmd = syscall.F_SETLKW
+			}
+
+			var l_type int16 = syscall.F_RDLCK
+			if exclusive {
+				l_type = syscall.F_WRLCK
 			}
 			
 			flock := &syscall.Flock_t{
-				Type:  syscall.F_WRLCK,
+				Type: l_type,
 				Whence: io.SeekStart,
 				Start: 0, 
 				Len: 0,
 			}
 
-			err = syscall.FcntlFlock(fd, l_type, flock)
+			err = syscall.FcntlFlock(fd, cmd, flock)
 			if err != nil {
 				if errno, ok := err.(syscall.Errno); ok && (errno == syscall.EACCES || errno == syscall.EAGAIN) {
 					return LOCK_CONFLICT
@@ -54,7 +59,11 @@ func (lf *LockableFile) Lock() error {
 		}
 	case FLOCK:
 		{
-			operation := syscall.LOCK_EX
+			operation := syscall.LOCK_SH
+			if exclusive {
+				operation = syscall.LOCK_EX
+			}
+
 			if !lf.blocking {
 				operation |= syscall.LOCK_NB
 			}
@@ -74,6 +83,14 @@ func (lf *LockableFile) Lock() error {
 	}
 
 	return nil
+}
+
+func (lf *LockableFile) RLock() error {
+	return lf.lock(false)
+}
+
+func (lf *LockableFile) RWLock() error {
+	return lf.lock(true)
 }
 
 func (lfile *LockableFile) Unlock() error {

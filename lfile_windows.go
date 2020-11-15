@@ -28,10 +28,14 @@ func (lf *LockableFile) UseFLOCK() {
 	// Not supported
 }
 
-func (lf *LockableFile) Lock() error {
+func (lf *LockableFile) lock(exclusive bool) error {
 	fd := lf.Fd()
 
-	dwFlags := LOCKFILE_EXCLUSIVE_LOCK
+	dwFlags := 0
+	if exclusive {
+		dwFlags |= LOCKFILE_EXCLUSIVE_LOCK
+	}
+
 	if !lf.blocking {
 		dwFlags |= LOCKFILE_FAIL_IMMEDIATELY
 	}
@@ -47,6 +51,14 @@ func (lf *LockableFile) Lock() error {
 	}
 	
 	return nil
+}
+
+func (lf *LockableFile) RLock() error {
+	return lf.lock(false)
+}
+
+func (lf *LockableFile) RWLock() error {
+	return lf.lock(true)
 }
 
 func (lf *LockableFile) Unlock() error {
