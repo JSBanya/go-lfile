@@ -13,9 +13,9 @@ go get github.com/JSBanya/go-lfile
 Include:
 ```
 include (
-  [...]
+  // (...)
   "github.com/JSBanya/go-lfile"
-  [...]
+  // (...)
 )
 ```
 
