@@ -9,17 +9,24 @@ var (
 	LOCK_CONFLICT = errors.New("File already locked")
 )
 
+type LockType int
+
+const (
+	FLOCK LockType = 0 // Thread-safe if applied to different open() calls; May not allow NFS
+	FCNTL LockType = 1 // Not thread-safe; Allows NFS; Max compatibility
+)
+
 type LockableFile struct {
 	*os.File // Composition; effectively acts as a standard os.File
 
-	blocking bool
+	blocking     bool
 	unixLockType LockType
 }
 
 // Converts an existing *os.File to a *LockableFile
 func New(file *os.File) *LockableFile {
-	lfile := &LockableFile {
-		File: file,
+	lfile := &LockableFile{
+		File:     file,
 		blocking: true,
 	}
 	lfile.UseFLOCK()

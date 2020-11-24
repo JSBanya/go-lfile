@@ -3,21 +3,22 @@
 package lfile
 
 import (
+	"errors"
 	"syscall"
 	"unsafe"
-	"errors"
 )
 
 var (
-	K32 = syscall.NewLazyDLL("kernel32.dll")
-	LockFileEx = K32.NewProc("LockFileEx").Addr()
-	UnlockFileEx = K32.NewProc("UnlockFileEx").Addr()
+	K32          = syscall.NewLazyDLL("kernel32.dll")
+	LockFileEx   = K32.NewProc("LockFileEx")
+	UnlockFileEx = K32.NewProc("UnlockFileEx")
 )
 
 const (
 	LOCKFILE_FAIL_IMMEDIATELY = 0x00000001
-	LOCKFILE_EXCLUSIVE_LOCK = 0x00000002
-	MAXDWORD = ^uintptr(0)
+	LOCKFILE_EXCLUSIVE_LOCK   = 0x00000002
+	LOCK_CONFLICT_ERRNO = syscall.Errno(33)
+	ALREADY_UNLOCKED_ERRNO = syscall.Errno(158)
 )
 
 func (lf *LockableFile) UseFCNTL() {
@@ -29,8 +30,6 @@ func (lf *LockableFile) UseFLOCK() {
 }
 
 func (lf *LockableFile) lock(exclusive bool) error {
-	fd := lf.Fd()
-
 	dwFlags := 0
 	if exclusive {
 		dwFlags |= LOCKFILE_EXCLUSIVE_LOCK
@@ -40,16 +39,23 @@ func (lf *LockableFile) lock(exclusive bool) error {
 		dwFlags |= LOCKFILE_FAIL_IMMEDIATELY
 	}
 
-	var ol syscall.Overlapped
-	r1, _, errno := syscall.Syscall6(LockFileEx, 6, fd, dwFlags, 0, 0, MAXDWORD, uintptr(unsafe.Pointer(ol)))
+	var hFile uintptr = lf.Fd()
+	var lpOverlapped syscall.Overlapped
+	lpOverlappedPtr := uintptr(unsafe.Pointer(&lpOverlapped))
+
+	r1, _, errno := LockFileEx.Call(hFile, uintptr(dwFlags), 0, 1, 0, lpOverlappedPtr)
 	if r1 == 0 { // "If the function succeeds, the return value is nonzero (TRUE)."
-		if errno == syscall.ERROR_IO_PENDING {
+		// According to docs, LockFileEx returns ERROR_IO_PENDING if the call would have
+		// blocked but LOCKFILE_FAIL_IMMEDIATELY was specified
+		// However, in practice, errno is typically the value 33 instead, which is equivalent but has no
+		// named counterpart. Thus, we check both. 
+		if errno == LOCK_CONFLICT_ERRNO || errno == syscall.ERROR_IO_PENDING {
 			return LOCK_CONFLICT
 		} else {
 			return errors.New(errno.Error())
 		}
 	}
-	
+
 	return nil
 }
 
@@ -62,13 +68,14 @@ func (lf *LockableFile) RWLock() error {
 }
 
 func (lf *LockableFile) Unlock() error {
-	fd := lf.Fd()
+	var hFile uintptr = lf.Fd()
+	var lpOverlapped syscall.Overlapped
+	lpOverlappedPtr := uintptr(unsafe.Pointer(&lpOverlapped))
 
-	var ol syscall.Overlapped
-	r1, _, errno := syscall.Syscall6(UnlockFileEx, 5, fd, 0, 0, MAXDWORD, uintptr(unsafe.Pointer(ol)), 0)
-	if r1 == 0 { // If the function succeeds, the return value is nonzero.
+	r1, _, errno := UnlockFileEx.Call(hFile, 0, 1, 0, lpOverlappedPtr)
+	if r1 == 0 && errno != ALREADY_UNLOCKED_ERRNO { // If the function succeeds, the return value is nonzero.
 		return errors.New(errno.Error())
 	}
-	
+
 	return nil
 }

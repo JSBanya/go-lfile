@@ -3,16 +3,9 @@
 package lfile
 
 import (
-	"syscall"
-	"log"
 	"io"
-)
-
-type LockType int
-const (
-	FLOCK LockType = 0 // Thread-safe if applied to different open() calls; May not allow NFS
-	FCNTL LockType = 1 // Not thread-safe; Allows NFS; Max compatibility
-	
+	"log"
+	"syscall"
 )
 
 func (lf *LockableFile) UseFCNTL() {
@@ -39,12 +32,12 @@ func (lf *LockableFile) lock(exclusive bool) error {
 			if exclusive {
 				l_type = syscall.F_WRLCK
 			}
-			
+
 			flock := &syscall.Flock_t{
-				Type: l_type,
+				Type:   l_type,
 				Whence: io.SeekStart,
-				Start: 0, 
-				Len: 0,
+				Start:  0,
+				Len:    0,
 			}
 
 			err = syscall.FcntlFlock(fd, cmd, flock)
@@ -101,9 +94,9 @@ func (lfile *LockableFile) Unlock() error {
 	case FCNTL:
 		{
 			flock := &syscall.Flock_t{
-				Type:  syscall.F_UNLCK,
-				Start: 0, 
-				Len: 0,
+				Type:   syscall.F_UNLCK,
+				Start:  0,
+				Len:    0,
 				Whence: 0, // SEEK_SET
 			}
 
@@ -123,8 +116,5 @@ func (lfile *LockableFile) Unlock() error {
 		log.Fatal("Unrecognized lock type.")
 	}
 
-	return nil	
+	return nil
 }
-
-
-

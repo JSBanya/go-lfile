@@ -1,24 +1,26 @@
 package lfile
 
 import (
-	"testing"
+	"fmt"
 	"io/ioutil"
-	"os"
 	"log"
+	"os"
+	"testing"
 	"time"
 )
 
 func createTemp() (string, error) {
 	log.Println("Creating temporary file for testing.")
-	tempFile, err := ioutil.TempFile("", "")
+	tempDir := os.TempDir()
+	f, err := os.OpenFile(fmt.Sprintf("%s%v%v", tempDir, string(os.PathSeparator), time.Now().UnixNano()), os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		return "", err
 	}
-	defer tempFile.Close()
+	defer f.Close()
 
-	tempFileName := tempFile.Name()
+	tempFileName := f.Name()
 	log.Printf("Temporary file created at %s", tempFileName)
-	
+
 	return tempFileName, nil
 }
 
@@ -27,9 +29,9 @@ func TestNew(t *testing.T) {
 	tempFileName, err := createTemp()
 	if err != nil {
 		t.Fatal(err)
-	}	
+	}
 
-	f, err := os.OpenFile(tempFileName, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
+	f, err := os.OpenFile(tempFileName, os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,9 +48,9 @@ func TestUnlockOnNonLockedFileFLOCK(t *testing.T) {
 	tempFileName, err := createTemp()
 	if err != nil {
 		t.Fatal(err)
-	}	
+	}
 
-	f, err := os.OpenFile(tempFileName, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
+	f, err := os.OpenFile(tempFileName, os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,15 +67,15 @@ func TestUnlockOnFileLockedByOther(t *testing.T) {
 	tempFileName, err := createTemp()
 	if err != nil {
 		t.Fatal(err)
-	}	
+	}
 
-	f, err := os.OpenFile(tempFileName, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
+	f, err := os.OpenFile(tempFileName, os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer f.Close()
 
-	f2, err := os.OpenFile(tempFileName, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
+	f2, err := os.OpenFile(tempFileName, os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,9 +102,9 @@ func TestUnlockOnNonLockedFileFCNTL(t *testing.T) {
 	tempFileName, err := createTemp()
 	if err != nil {
 		t.Fatal(err)
-	}	
+	}
 
-	f, err := os.OpenFile(tempFileName, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
+	f, err := os.OpenFile(tempFileName, os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,9 +122,9 @@ func TestClose(t *testing.T) {
 	tempFileName, err := createTemp()
 	if err != nil {
 		t.Fatal(err)
-	}	
+	}
 
-	f, err := os.OpenFile(tempFileName, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
+	f, err := os.OpenFile(tempFileName, os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +138,7 @@ func TestClose(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err = f.Close(); err == nil  {
+	if err = f.Close(); err == nil {
 		t.Fatal("File should have already been closed.")
 	}
 }
@@ -146,15 +148,15 @@ func TestNonblockingErrors(t *testing.T) {
 	tempFileName, err := createTemp()
 	if err != nil {
 		t.Fatal(err)
-	}	
+	}
 
-	f, err := os.OpenFile(tempFileName, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
+	f, err := os.OpenFile(tempFileName, os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer f.Close()
 
-	f2, err := os.OpenFile(tempFileName, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
+	f2, err := os.OpenFile(tempFileName, os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +172,7 @@ func TestNonblockingErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = lf2.RWLock();
+	err = lf2.RWLock()
 	if err == nil {
 		t.Fatal("Expected LOCK_CONFLICT error")
 	} else if err != LOCK_CONFLICT {
@@ -190,7 +192,6 @@ func TestNonblockingErrors(t *testing.T) {
 	}
 }
 
-
 // With high probability, tests whether mutex correctly locks file
 // Only possible to test flock on unix systems as fcntl does not work with multithreading
 func TestBlockingLockAndUnlock(t *testing.T) {
@@ -198,32 +199,32 @@ func TestBlockingLockAndUnlock(t *testing.T) {
 	tempFileName, err := createTemp()
 	if err != nil {
 		t.Fatal(err)
-	}	
+	}
 
-	f, err := os.OpenFile(tempFileName, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
+	f, err := os.OpenFile(tempFileName, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	fmux := New(f)
-	fmux.UseFLOCK() // No-op on windows
+	lf := New(f)
+	lf.UseFLOCK() // No-op on windows
 
-	err = fmux.RWLock()
+	err = lf.RWLock()
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	go func() {
 		// Thread 2
-		f2, err := os.OpenFile(tempFileName, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
+		f2, err := os.OpenFile(tempFileName, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 		if err != nil {
 			t.Fatal(err)
 		}
-	
-		fmux2 := New(f2)
-		fmux2.UseFLOCK()
 
-		err = fmux2.RWLock()
+		lf2 := New(f2)
+		lf2.UseFLOCK()
+
+		err = lf2.RWLock()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -233,8 +234,7 @@ func TestBlockingLockAndUnlock(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		fmux2.Unlock()
-		f2.Close()
+		lf2.UnlockAndClose()
 	}()
 
 	time.Sleep(2 * time.Second)
@@ -243,8 +243,7 @@ func TestBlockingLockAndUnlock(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fmux.Unlock() // Should cause Thread 2 to unlock
-	f.Close()
+	lf.UnlockAndClose() // Should cause Thread 2 to unlock
 
 	time.Sleep(2 * time.Second) // Wait for Thread 2 to finish
 
@@ -270,14 +269,14 @@ func TestMultipleReadLocks(t *testing.T) {
 	tempFileName, err := createTemp()
 	if err != nil {
 		t.Fatal(err)
-	}	
+	}
 
 	for i := 0; i < 4; i++ {
-		f, err := os.OpenFile(tempFileName, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
+		f, err := os.OpenFile(tempFileName, os.O_RDWR|os.O_CREATE, 0666)
 		if err != nil {
 			t.Fatal(err)
 		}
-	
+
 		lf := New(f)
 		if err = lf.RLock(); err != nil {
 			t.Fatal(err)
@@ -294,7 +293,7 @@ func TestExclusive(t *testing.T) {
 	}
 
 	// Read lock #1
-	f, err := os.OpenFile(tempFileName, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
+	f, err := os.OpenFile(tempFileName, os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -304,7 +303,7 @@ func TestExclusive(t *testing.T) {
 	}
 
 	// Read lock #2
-	f2, err := os.OpenFile(tempFileName, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
+	f2, err := os.OpenFile(tempFileName, os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,7 +313,7 @@ func TestExclusive(t *testing.T) {
 	}
 
 	// Exclusive lock
-	f3, err := os.OpenFile(tempFileName, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
+	f3, err := os.OpenFile(tempFileName, os.O_RDWR|os.O_CREATE, 0666)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -349,7 +348,7 @@ func TestExclusive(t *testing.T) {
 	if err = lfex.RWLock(); err != nil {
 		t.Fatal(err)
 	}
-	
+
 	if err = lfex.UnlockAndClose(); err != nil {
 		t.Fatal(err)
 	}
